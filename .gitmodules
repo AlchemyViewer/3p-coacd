@@ -1,0 +1,3 @@
+[submodule "CoACD"]
+	path = CoACD
+	url = https://github.com/SarahWeiii/CoACD.git
