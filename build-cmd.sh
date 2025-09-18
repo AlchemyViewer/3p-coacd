@@ -106,6 +106,8 @@ pushd "$COACD_SOURCE_DIR"
                     CFLAGS="$cc_opts" \
                     LDFLAGS="$ld_opts" \
                     cmake .. -G "Xcode" -DBUILD_SHARED_LIBS:BOOL=OFF \
+                        -DPREBUILT_LIB_DIR="$stage/packages/lib/release" \
+                        -DPREBUILT_INCLUDE_DIR="$stage/packages/include" \
                         -DCMAKE_CONFIGURATION_TYPES="Release" \
                         -DCMAKE_C_FLAGS="$cc_opts" \
                         -DCMAKE_CXX_FLAGS="$cc_opts" \
@@ -140,6 +142,8 @@ pushd "$COACD_SOURCE_DIR"
             mkdir -p "build"
             pushd "build"
                 cmake .. -GNinja -DBUILD_SHARED_LIBS:BOOL=OFF \
+                    -DPREBUILT_LIB_DIR="$stage/packages/lib/release" \
+                    -DPREBUILT_INCLUDE_DIR="$stage/packages/include" \
                     -DCMAKE_BUILD_TYPE="Release" \
                     -DCMAKE_C_FLAGS="$(remove_cxxstd $opts)" \
                     -DCMAKE_CXX_FLAGS="$opts" \
@@ -153,6 +157,10 @@ pushd "$COACD_SOURCE_DIR"
                 if [ "${DISABLE_UNIT_TESTS:-0}" = "0" ]; then
                     ctest -C Release --parallel $AUTOBUILD_CPU_COUNT
                 fi
+
+                mkdir -p "$stage/lib/release"
+                cp -a lib_coacd.a "$stage/lib/release"
+                cp -a libcoacd.a "$stage/lib/release"
             popd
         ;;
     esac
