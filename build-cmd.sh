@@ -123,10 +123,10 @@ pushd "$COACD_SOURCE_DIR"
                     if [ "${DISABLE_UNIT_TESTS:-0}" = "0" ]; then
                         ctest -C Release --parallel $AUTOBUILD_CPU_COUNT
                     fi
-                popd
 
-                mkdir -p "$stage/lib/release/$arch"
-                cp -a Release/*.a "$stage/lib/release/$arch"
+                    mkdir -p "$stage/lib/release/$arch"
+                    cp -a Release/*.a "$stage/lib/release/$arch"
+                popd
             done
 
             lipo -create -output "$stage/lib/release/lib_coacd.a" "$stage/lib/release/x86_64/lib_coacd.a" "$stage/lib/release/arm64/lib_coacd.a"
