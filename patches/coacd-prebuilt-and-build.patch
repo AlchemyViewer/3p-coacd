@@ -1,0 +1,199 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 404fc12..55949c6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,17 +10,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ option(WITH_3RD_PARTY_LIBS "Include 3rd party libraries" ON)
+ 
+ if(WITH_3RD_PARTY_LIBS)
++    add_compile_definitions(DISABLE_SPDLOG=1)
+     add_compile_definitions(WITH_3RD_PARTY_LIBS=1)
+ else()
+-    set(DISABLE_SPDLOG ON)
++    add_compile_definitions(DISABLE_SPDLOG=1)
+     add_compile_definitions(WITH_3RD_PARTY_LIBS=0)
+ endif()
+ 
+ # --- Compiler-specific flags
+ if(MSVC)
+     # For Microsoft Visual Studio (Windows)
+-    add_compile_options("/bigobj")
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W0 /D_USE_MATH_DEFINES")
++    add_compile_options(/bigobj /W0)
++    add_compile_definitions(_USE_MATH_DEFINES=1)
+     set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
+ else()
+     # For non-MSVC (Linux, macOS, etc.)
+@@ -32,10 +33,10 @@ else()
+         # Linux/Unix: add -fPIC and disable -Werror=stringop-overflow
+         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wno-error=stringop-overflow")
+     endif()
+-endif()
+ 
+-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS}")
+-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
++    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS}")
++    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
++endif()
+ 
+ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")
+@@ -43,12 +44,32 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+     set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+ endif()
+ 
+-if(WITH_3RD_PARTY_LIBS)
+-    include(zlib)
+-    include(boost)
+-    include(openvdb)
+-    include(spdlog)
+-endif()
++# if(WITH_3RD_PARTY_LIBS)
++#     include(zlib)
++#     include(boost)
++#     include(openvdb)
++#     include(spdlog)
++# endif()
++
++add_library(spdlog::spdlog INTERFACE IMPORTED)
++
++find_library(TBB_LIBRARY
++    NAMES
++    tbb12.lib
++    tbb12_debug.lib
++    PATHS "${PREBUILT_LIB_DIR}" REQUIRED NO_DEFAULT_PATH)
++add_library(TBB::tbb INTERFACE IMPORTED)
++target_link_libraries(TBB::tbb INTERFACE ${TBB_LIBRARY})
++target_include_directories(TBB::tbb SYSTEM INTERFACE ${PREBUILT_INCLUDE_DIR})
++
++find_library(OPENVDB_LIBRARY
++    NAMES
++    libopenvdb.lib
++    PATHS "${PREBUILT_LIB_DIR}" REQUIRED NO_DEFAULT_PATH)
++add_library(openvdb_static INTERFACE IMPORTED)
++target_link_libraries(openvdb_static INTERFACE ${OPENVDB_LIBRARY} TBB::tbb)
++target_include_directories(openvdb_static SYSTEM INTERFACE ${PREBUILT_INCLUDE_DIR})
++target_compile_definitions(openvdb_static INTERFACE OPENVDB_STATICLIB=1)
+ 
+ file(GLOB_RECURSE COACD_SRC "src/*.cc" "src/*.cpp")
+ if(NOT WITH_3RD_PARTY_LIBS)
+@@ -73,7 +94,7 @@ find_package(Threads)
+ target_link_libraries(coacd PRIVATE Threads::Threads)
+ set_target_properties(coacd PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+ 
+-add_library(_coacd SHARED "public/coacd.cpp")
++add_library(_coacd STATIC "public/coacd.cpp")
+ 
+ if(WITH_3RD_PARTY_LIBS)
+     target_link_libraries(_coacd PRIVATE coacd spdlog::spdlog openvdb_static)
+diff --git a/main.cpp b/main.cpp
+index 5cec255..0d7abae 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
+   Params params;
+ 
+   // Model files
+-  string input_model;
++  std::string input_model;
+   params.seed = (unsigned)time(NULL);
+ 
+   // args
+@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
+     }
+   }
+ 
+-  string ext;
++  std::string ext;
+   if (params.input_model.length() > 4)
+   {
+     ext = params.input_model.substr(params.input_model.length() - 4);
+@@ -187,8 +187,8 @@ int main(int argc, char *argv[])
+ 
+   RecoverParts(parts, bbox, rot, params);
+ 
+-  string objName = regex_replace(params.output_name, regex("wrl"), "obj");
+-  string wrlName = regex_replace(params.output_name, regex("obj"), "wrl");
++  std::string objName = regex_replace(params.output_name, regex("wrl"), "obj");
++  std::string wrlName = regex_replace(params.output_name, regex("obj"), "wrl");
+ 
+   SaveVRML(wrlName, parts, params);
+   SaveOBJ(objName, parts, params);
+diff --git a/public/coacd.cpp b/public/coacd.cpp
+index 2712612..ba757c5 100644
+--- a/public/coacd.cpp
++++ b/public/coacd.cpp
+@@ -100,6 +100,7 @@ std::vector<Mesh> CoACD(Mesh const &input, double threshold,
+ }
+ 
+ void set_log_level(std::string_view level) {
++#ifndef DISABLE_SPDLOG
+   if (level == "off") {
+     logger::get()->set_level(spdlog::level::off);
+   } else if (level == "debug") {
+@@ -115,6 +116,7 @@ void set_log_level(std::string_view level) {
+   } else {
+     throw std::runtime_error("invalid log level " + std::string(level));
+   }
++#endif
+ }
+ 
+ } // namespace coacd
+diff --git a/public/coacd.h b/public/coacd.h
+index 5839f08..a6fad6c 100644
+--- a/public/coacd.h
++++ b/public/coacd.h
+@@ -6,7 +6,7 @@
+ 
+ namespace coacd {
+ 
+-#if _WIN32
++#if 0
+ #define COACD_API __declspec(dllexport)
+ #else
+ #define COACD_API
+diff --git a/src/io.h b/src/io.h
+index f3f0302..8a10206 100644
+--- a/src/io.h
++++ b/src/io.h
+@@ -29,10 +29,10 @@ namespace coacd
+ {
+ 
+     //////////////// IO ////////////////
+-    void SaveMesh(const string &filename, Model &mesh);
++    void SaveMesh(const std::string &filename, Model &mesh);
+     void SaveConfig(Params params);
+-    void SaveOBJ(const string &filename, vector<Model> parts, Params &params);
+-    void SaveOBJs(const string &foldername, const string &filename, vector<Model> parts, Params &params);
++    void SaveOBJ(const std::string &filename, vector<Model> parts, Params &params);
++    void SaveOBJs(const std::string &foldername, const std::string &filename, vector<Model> parts, Params &params);
+     bool WriteVRML(ofstream &fout, Model mesh);
+-    void SaveVRML(const string &fileName, vector<Model>& meshes, Params &params);
++    void SaveVRML(const std::string &fileName, vector<Model>& meshes, Params &params);
+ }
+diff --git a/src/logger.h b/src/logger.h
+index 62947c4..a59c027 100644
+--- a/src/logger.h
++++ b/src/logger.h
+@@ -2,6 +2,8 @@
+ #include <exception>
+ #ifndef DISABLE_SPDLOG
+ #include <spdlog/spdlog.h>
++#else
++#include <iostream>
+ #endif
+ #include <string_view>
+ namespace coacd
+diff --git a/src/process.h b/src/process.h
+index 63e2905..a041da9 100644
+--- a/src/process.h
++++ b/src/process.h
+@@ -25,7 +25,7 @@ namespace coacd
+ {
+   extern thread_local std::mt19937 random_engine;
+ 
+-  void DecimateCH(Model &ch, int tgt_pts, string apx_mode);
++  void DecimateCH(Model &ch, int tgt_pts, std::string apx_mode);
+   void DecimateConvexHulls(vector<Model> &cvxs, Params &params);
+   void MergeCH(Model &ch1, Model &ch2, Model &ch, Params &params);
+   double MergeConvexHulls(Model &m, vector<Model> &meshs, vector<Model> &cvxs, Params &params, double epsilon = 0.02, double threshold = 0.01);
